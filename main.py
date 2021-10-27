@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 UP_ACTION = 2
 DOWN_ACTION = 3
-NO_OP_ACTION = 0
+NO_OP_ACTION = 1
 constrained_actions = [NO_OP_ACTION, UP_ACTION, DOWN_ACTION]
 
 class Model(): #https://github.com/tmoer/alphazero_singleplayer/blob/db742bcbd61e1d62a6958136ca7bb2ae11053971/alphazero.py
@@ -82,7 +82,7 @@ class Database():
         self.insert_index = 0
         self.size = 0
 
-    def store(self,experience):
+    def store(self, experience):
         if self.size < self.max_size:
             self.experiences.append(experience)
             self.size +=1
@@ -196,6 +196,7 @@ class MCTS():
         else:
             self.root.parent_action = None  # continue from current root
         if self.root.terminal:
+#            env.render("human")
             raise (ValueError("Can't do tree search from a terminal state"))
 
         env = getBaseEnv(env)
@@ -235,8 +236,8 @@ class MCTS():
             self.root = None
             self.root_index = s1
         elif np.linalg.norm(self.root.child_actions[a].child_state.index - s1) > 0.01:
-            print('Warning: this domain seems stochastic. Not re-using the subtree for next search. ' +
-                  'To deal with stochastic environments, implement progressive widening.')
+            #print('Warning: this domain seems stochastic. Not re-using the subtree for next search. ' +
+            #      'To deal with stochastic environments, implement progressive widening.')
 #            time.sleep(2)
             self.root = None
             self.root_index = s1
@@ -258,7 +259,7 @@ def check_space(space):
         dim = space.shape
         discrete = False
     elif isinstance(space,spaces.Discrete):
-        dim = space.n
+        dim = 3#space.n
         discrete = True
     else:
         raise NotImplementedError('This type of space is not supported')
@@ -296,13 +297,17 @@ def store_safely(folder,name,to_store):
 
 def symmetric_remove(x,n):
     ''' removes n items from beginning and end '''
-    odd = bool(n & 1) #true if number is odd, false else
+    odd = is_odd(n)
     half = int(n/2)
     if half > 0:
         x = x[half:-half]
     if odd:
         x = x[1:]
     return x
+
+def is_odd(number):
+    ''' checks whether number is odd, returns boolean '''
+    return bool(number & 1)
 
 def stable_normalizer(x,temp):
     ''' Computes x[i]**temp/sum_i(x[i]**temp) '''
@@ -346,30 +351,35 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
             start = time.time()
             s = env.reset()
             R = 0.0  # Total return counter
+            R1 = 0.0 # return per episode
             a_store = []
             seed = np.random.randint(1e7)  # draw some Env seed
             env.seed(seed)
             mctsEnv.reset()
             mctsEnv.seed(seed)
 
-            mcts = MCTS(root_index=s, root=None, model=model, na = len(constrained_actions), gamma=gamma)  # the object responsible for MCTS searches TODO #na=model.action_dim
+            mcts = MCTS(root_index=s, root=None, model=model, na=len(constrained_actions), gamma=gamma)  # the object responsible for MCTS searches TODO #na=model.action_dim
             for t in range(max_ep_len):
                 # MCTS step
-                mcts.search(n_mcts=n_mcts, c=c, env=env, mcts_env=mctsEnv,skip_frame=skip_frame)  # perform a forward search
+                mcts.search(n_mcts=n_mcts, c=c, env=env, mcts_env=mctsEnv, skip_frame=skip_frame)  # perform a forward search
                 state, pi, V = mcts.return_results(temp)  # extract the root output
                 D.store((state, V, pi))
 
                 # Make the true step
                 a = np.random.choice(len(pi), p=pi)
-                a_store.append(a)
-                s1, r, terminal, _ = env.step(a)
+                a_store.append(a+1)
+                s1, r, terminal, _ = env.step(a+1)
+#                env.render("human")
+#                if (r > 0):
+#                    input("waiting")
+                R += r
                 for _ in range(skip_frame-1):
-                    s1, r, terminal, _ = env.step(a)
+                    s1, r, terminal, _ = env.step(a+1)
+#                    if (r > 0):
+#                        input("waiting")
                     R += r
                     if terminal:
                         break
-                R += r
-                R /= skip_frame
                 t_total += n_mcts  # total number of environment steps (counts the mcts steps)
 
                 if terminal:
@@ -393,14 +403,15 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
             # for epoch in range(1):
             #     for sb, Vb, pib in D:
             #         model.train(sb, Vb, pib)
+    return episode_returns, timepoints, a_best, seed_best, R_best
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--game', default='CartPole-v0', help='Training environment')
+    parser.add_argument('--game', default='Pong-v0', help='Training environment')
     parser.add_argument('--n_ep', type=int, default=500, help='Number of episodes')
     parser.add_argument('--n_mcts', type=int, default=40, help='Number of MCTS traces per step')
-    parser.add_argument('--max_ep_len', type=int, default=300, help='Maximum number of steps per episode')
+    parser.add_argument('--max_ep_len', type=int, default=15000, help='Maximum number of steps per episode')
     parser.add_argument('--lr', type=float, default=0.001, help='Learning rate')
     parser.add_argument('--c', type=float, default=1.5, help='UCT constant')
     parser.add_argument('--temp', type=float, default=1.0,
@@ -412,7 +423,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--n_hidden_layers', type=int, default=2, help='Number of hidden layers in NN')
     parser.add_argument('--n_hidden_units', type=int, default=128, help='Number of units per hidden layers in NN')
-    parser.add_argument('--skip_frame', type=int, default=3, help='Number of units per hidden layers in NN')
+    parser.add_argument('--skip_frame', type=int, default=3, help='Number of frames skipped between two agent observations')
 
     args = parser.parse_args()
 
@@ -422,9 +433,11 @@ if __name__ == '__main__':
                                         n_hidden_layers=args.n_hidden_layers,n_hidden_units=args.n_hidden_units,skip_frame=args.skip_frame)
 
     fig,ax = plt.subplots(1,figsize=[7,5])
+
+
     total_eps = len(episode_returns)
-    episode_returns = np.convolve(episode_returns, np.ones(args.window)/args.window, mode='valid')
-    ax.plot(symmetric_remove(np.arange(total_eps),args.window-1),episode_returns,linewidth=4,color='darkred')
+#    episode_returns = np.convolve(episode_returns, np.ones(args.window)/args.window, mode='valid')
+    ax.plot(episode_returns,linewidth=4,color='darkred') #symmetric_remove(np.arange(total_eps),args.window-1) first argument
     ax.set_ylabel('Return')
     ax.set_xlabel('Episode',color='darkred')
     plt.savefig(os.getcwd()+'/learning_curve.png',bbox_inches="tight",dpi=300)
