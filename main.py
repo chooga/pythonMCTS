@@ -197,6 +197,10 @@ class MCTS():
             self.root.parent_action = None  # continue from current root
         if self.root.terminal:
 #            env.render("human")
+            plt.imshow(self.root.index,aspect="auto")
+            plt.show()
+            print(self.root.n)
+            input("waiting")
             raise (ValueError("Can't do tree search from a terminal state"))
 
         env = getBaseEnv(env)
@@ -231,13 +235,13 @@ class MCTS():
 
     def forward(self, a, s1):
         ''' Move the root forward '''
-        index_diff = np.linalg.norm(self.root.child_actions[a].child_state.index - s1)
+        #index_diff = np.linalg.norm(self.root.child_actions[a].child_state.index - s1)
         if not hasattr(self.root.child_actions[a], 'child_state'):
             self.root = None
             self.root_index = s1
         elif np.linalg.norm(self.root.child_actions[a].child_state.index - s1) > 0.01:
-            #print('Warning: this domain seems stochastic. Not re-using the subtree for next search. ' +
-            #      'To deal with stochastic environments, implement progressive widening.')
+            print('Warning: this domain seems stochastic. Not re-using the subtree for next search. ' +
+                  'To deal with stochastic environments, implement progressive widening.')
 #            time.sleep(2)
             self.root = None
             self.root_index = s1
@@ -328,7 +332,11 @@ def preprocess(I): #https://gist.github.com/karpathy/a4166c7fe253700972fcbc77e4e
 
 #class PlaningModel(Env=env, lr=lr, n_hidden_layers=n_hidden_layers):
 
+def applynoise(pi,epsilon=0.25):
 
+    noise = np.random.dirichlet([0.2] * len(pi))
+    pi = (1-epsilon)*pi + epsilon * noise
+    return pi
 
 def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n_hidden_layers,n_hidden_units, skip_frame):
     episode_returns = []  # storage
@@ -351,7 +359,6 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
             start = time.time()
             s = env.reset()
             R = 0.0  # Total return counter
-            R1 = 0.0 # return per episode
             a_store = []
             seed = np.random.randint(1e7)  # draw some Env seed
             env.seed(seed)
@@ -363,6 +370,8 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
                 # MCTS step
                 mcts.search(n_mcts=n_mcts, c=c, env=env, mcts_env=mctsEnv, skip_frame=skip_frame)  # perform a forward search
                 state, pi, V = mcts.return_results(temp)  # extract the root output
+
+                pi = applynoise(pi)
                 D.store((state, V, pi))
 
                 # Make the true step
@@ -373,15 +382,16 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
 #                if (r > 0):
 #                    input("waiting")
                 R += r
-                for _ in range(skip_frame-1):
+                for skfr in range(skip_frame-1):
                     s1, r, terminal, _ = env.step(a+1)
 #                    if (r > 0):
 #                        input("waiting")
                     R += r
                     if terminal:
                         break
+                else:
+                    continue
                 t_total += n_mcts  # total number of environment steps (counts the mcts steps)
-
                 if terminal:
                     break
                 else:
@@ -398,6 +408,7 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
                 R_best = R
             print('Finished episode {}, total return: {}, total time: {} sec'.format(ep, np.round(R, 2),
                                                                                      np.round((time.time() - start), 1)))
+
             # # Train
             # D.reshuffle()
             # for epoch in range(1):
@@ -406,17 +417,19 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
     return episode_returns, timepoints, a_best, seed_best, R_best
 
 
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--game', default='Pong-v0', help='Training environment')
     parser.add_argument('--n_ep', type=int, default=500, help='Number of episodes')
     parser.add_argument('--n_mcts', type=int, default=40, help='Number of MCTS traces per step')
     parser.add_argument('--max_ep_len', type=int, default=15000, help='Maximum number of steps per episode')
-    parser.add_argument('--lr', type=float, default=0.001, help='Learning rate')
+    parser.add_argument('--lr', type=float, default=0.01, help='Learning rate')
     parser.add_argument('--c', type=float, default=1.5, help='UCT constant')
     parser.add_argument('--temp', type=float, default=1.0,
                         help='Temperature in normalization of counts to policy target')
-    parser.add_argument('--gamma', type=float, default=0.99, help='Discount parameter')
+    parser.add_argument('--gamma', type=float, default=0.975, help='Discount parameter')
     parser.add_argument('--data_size', type=int, default=1000, help='Dataset size (FIFO)')
     parser.add_argument('--batch_size', type=int, default=32, help='Minibatch size')
     parser.add_argument('--window', type=int, default=25, help='Smoothing window for visualization')
@@ -432,6 +445,8 @@ if __name__ == '__main__':
                                         data_size=args.data_size,batch_size=args.batch_size,temp=args.temp,
                                         n_hidden_layers=args.n_hidden_layers,n_hidden_units=args.n_hidden_units,skip_frame=args.skip_frame)
 
+    print("BEST!!!")
+    print('seed: {}, moves: {}, reward: {} sec'.format(seed_best, a_best,R_best))
     fig,ax = plt.subplots(1,figsize=[7,5])
 
 
