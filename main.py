@@ -423,20 +423,20 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--game', default='Pong-v0', help='Training environment')
     parser.add_argument('--n_ep', type=int, default=500, help='Number of episodes')
-    parser.add_argument('--n_mcts', type=int, default=40, help='Number of MCTS traces per step')
+    parser.add_argument('--n_mcts', type=int, default=40, help='Number of MCTS traces per step') #
     parser.add_argument('--max_ep_len', type=int, default=15000, help='Maximum number of steps per episode')
     parser.add_argument('--lr', type=float, default=0.01, help='Learning rate')
     parser.add_argument('--c', type=float, default=1.5, help='UCT constant')
     parser.add_argument('--temp', type=float, default=1.0,
                         help='Temperature in normalization of counts to policy target')
-    parser.add_argument('--gamma', type=float, default=0.975, help='Discount parameter')
+    parser.add_argument('--gamma', type=float, default=0.975, help='Discount parameter') #
     parser.add_argument('--data_size', type=int, default=1000, help='Dataset size (FIFO)')
     parser.add_argument('--batch_size', type=int, default=32, help='Minibatch size')
     parser.add_argument('--window', type=int, default=25, help='Smoothing window for visualization')
 
     parser.add_argument('--n_hidden_layers', type=int, default=2, help='Number of hidden layers in NN')
     parser.add_argument('--n_hidden_units', type=int, default=128, help='Number of units per hidden layers in NN')
-    parser.add_argument('--skip_frame', type=int, default=3, help='Number of frames skipped between two agent observations')
+    parser.add_argument('--skip_frame', type=int, default=3, help='Number of frames skipped between two agent observations') #
 
     args = parser.parse_args()
 
