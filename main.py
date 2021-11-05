@@ -208,7 +208,7 @@ class MCTS():
 
         for i in range(n_mcts):
             state = self.root  # reset to root for new trace
-            env.restore_full_state(snapshot)
+            mcts_env.restore_full_state(snapshot)
             r = 0
 
             while not state.terminal:
@@ -253,7 +253,7 @@ class MCTS():
         counts = np.array([child_action.n for child_action in self.root.child_actions])
         Q = np.array([child_action.Q for child_action in self.root.child_actions])
         pi_target = stable_normalizer(counts, temp)
-        V_target = np.sum((counts / np.sum(counts)) * Q)[None]
+        V_target = np.sum((counts / np.sum(counts)) * Q)
         return self.root.index, pi_target, V_target
 
 #helpers-methods
@@ -333,10 +333,9 @@ def preprocess(I): #https://gist.github.com/karpathy/a4166c7fe253700972fcbc77e4e
 #class PlaningModel(Env=env, lr=lr, n_hidden_layers=n_hidden_layers):
 
 def applynoise(pi,epsilon=0.25):
-
-    noise = np.random.dirichlet([0.2] * len(pi))
-    pi = (1-epsilon)*pi + epsilon * noise
-    return pi
+    x = np.random.dirichlet(pi, 1).transpose()
+    print(x)
+    return x
 
 def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n_hidden_layers,n_hidden_units, skip_frame):
     episode_returns = []  # storage
@@ -370,7 +369,7 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
                 # MCTS step
                 mcts.search(n_mcts=n_mcts, c=c, env=env, mcts_env=mctsEnv, skip_frame=skip_frame)  # perform a forward search
                 state, pi, V = mcts.return_results(temp)  # extract the root output
-
+                print("pi {}".format(pi) )
                 pi = applynoise(pi)
                 D.store((state, V, pi))
 
