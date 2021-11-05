@@ -16,6 +16,7 @@ DOWN_ACTION = 3
 NO_OP_ACTION = 1
 constrained_actions = [NO_OP_ACTION, UP_ACTION, DOWN_ACTION]
 
+
 class Model(): #https://github.com/tmoer/alphazero_singleplayer/blob/db742bcbd61e1d62a6958136ca7bb2ae11053971/alphazero.py
     def __init__(self, Env, lr, n_hidden_layers, n_hidden_units):
         # Check the Gym environment
@@ -66,6 +67,7 @@ class Model(): #https://github.com/tmoer/alphazero_singleplayer/blob/db742bcbd61
     def predict_pi(self, s):
         return self.sess.run(self.pi_hat, feed_dict={self.x: preprocess(s)})
 
+
 class Database():
 
     def __init__(self,max_size,batch_size):
@@ -105,7 +107,7 @@ class Database():
             self.reshuffle()  # Reset for the next epoch
             raise (StopIteration)
 
-        if (self.sample_index + 2 * self.batch_size > self.size):
+        if(self.sample_index + 2 * self.batch_size > self.size):
             indices = self.sample_array[self.sample_index:]
             batch = [self.experience[i] for i in indices]
         else:
@@ -177,6 +179,7 @@ class Action():
         self.n += 1
         self.W += R
         self.Q = self.W / self.n
+
 
 class MCTS():
     ''' MCTS object '''
@@ -256,18 +259,20 @@ class MCTS():
         V_target = np.sum((counts / np.sum(counts)) * Q)
         return self.root.index, pi_target, V_target
 
-#helpers-methods
+
+# helpers-methods
 def check_space(space):
     ''' Check the properties of an environment state or action space '''
     if isinstance(space,spaces.Box):
         dim = space.shape
         discrete = False
     elif isinstance(space,spaces.Discrete):
-        dim = 3#space.n
+        dim = 3 #space.n
         discrete = True
     else:
         raise NotImplementedError('This type of space is not supported')
     return dim, discrete
+
 
 def getBaseEnv(env):
     if type(env) == gym.wrappers.time_limit.TimeLimit:
@@ -275,6 +280,7 @@ def getBaseEnv(env):
     while hasattr(env, 'env'):
         env = env.env
     return env
+
 
 def argmax(x):
     ''' assumes a 1D vector x '''
@@ -288,6 +294,7 @@ def argmax(x):
         winner = np.argmax(x) # numerical instability ?
     return winner
 
+
 def store_safely(folder,name,to_store):
     ''' to prevent losing information due to interruption of process'''
     new_name = folder+name+'.npy'
@@ -299,24 +306,17 @@ def store_safely(folder,name,to_store):
     if os.path.exists(old_name):
         os.remove(old_name)
 
-def symmetric_remove(x,n):
-    ''' removes n items from beginning and end '''
-    odd = is_odd(n)
-    half = int(n/2)
-    if half > 0:
-        x = x[half:-half]
-    if odd:
-        x = x[1:]
-    return x
 
 def is_odd(number):
     ''' checks whether number is odd, returns boolean '''
     return bool(number & 1)
 
-def stable_normalizer(x,temp):
+
+def stable_normalizer(x, temp):
     ''' Computes x[i]**temp/sum_i(x[i]**temp) '''
     x = (x / np.max(x))**temp
     return np.abs(x/np.sum(x))
+
 
 def preprocess(I): #https://gist.github.com/karpathy/a4166c7fe253700972fcbc77e4ea32c5
     """ prepro 210x160x3 uint8 frame into 6400 (80x80) 1D float vector """
@@ -332,10 +332,12 @@ def preprocess(I): #https://gist.github.com/karpathy/a4166c7fe253700972fcbc77e4e
 
 #class PlaningModel(Env=env, lr=lr, n_hidden_layers=n_hidden_layers):
 
-def applynoise(pi,epsilon=0.25):
-    x = np.random.dirichlet(pi, 1).transpose()
-    print(x)
-    return x
+
+def applynoise(pi,epsilon=0.25,na=3):
+    x = np.random.dirichlet([1/na] * len(pi))
+    x += pi
+    return x/sum(x)
+
 
 def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n_hidden_layers,n_hidden_units, skip_frame):
     episode_returns = []  # storage
@@ -369,10 +371,9 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
                 # MCTS step
                 mcts.search(n_mcts=n_mcts, c=c, env=env, mcts_env=mctsEnv, skip_frame=skip_frame)  # perform a forward search
                 state, pi, V = mcts.return_results(temp)  # extract the root output
-                print("pi {}".format(pi) )
+
                 pi = applynoise(pi)
                 D.store((state, V, pi))
-
                 # Make the true step
                 a = np.random.choice(len(pi), p=pi)
                 a_store.append(a+1)
