@@ -10,6 +10,7 @@ import gym.spaces as spaces
 import random
 
 import matplotlib.pyplot as plt
+import cv2
 
 UP_ACTION = 2
 DOWN_ACTION = 3
@@ -33,6 +34,7 @@ class Model(): #https://github.com/tmoer/alphazero_singleplayer/blob/db742bcbd61
             x = tf.squeeze(tf.one_hot(x, self.state_dim, axis=1), axis=2)
 
         x = tf.layers.flatten(x)
+
 
         # Feedforward: Can be modified to any representation function, e.g. convolutions, residual networks, etc.
         for i in range(n_hidden_layers):
@@ -218,6 +220,7 @@ class MCTS():
                 action = state.select(c=c)
                 for frame in range(skip_frame):
                     s1, r1, t, _ = mcts_env.step(action.index)
+                    cv2.imshow("dont care", s1)
                     r += r1
                 r /= skip_frame
                 if hasattr(action, 'child_state'):
@@ -353,10 +356,25 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
     t_total = 0  # total steps
     R_best = -np.Inf
 
-    with tf.Session() as sess:
+    cfg = dict({
+        'allow_soft_placement': False,
+        'log_device_placement': False
+    })
+    utility = 1
+    if utility > 0.0:
+        print('GPU mode with {} usage'.format(utility))
+        cfg['gpu_options'] = tf.GPUOptions(
+            per_process_gpu_memory_fraction=utility)
+        cfg['allow_soft_placement'] = True
+    else:
+        print('Running entirely on CPU')
+        cfg['device_count'] = {'GPU': 0}
+
+    with tf.Session(config=tf.ConfigProto(**cfg)) as sess:
         model.sess = sess
         sess.run(tf.global_variables_initializer())
         for ep in range(n_ep):
+            print(model.sess.summury())
             start = time.time()
             s = env.reset()
             R = 0.0  # Total return counter
@@ -406,8 +424,10 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
                 a_best = a_store
                 seed_best = seed
                 R_best = R
+                print('new best with seed {} had the R {} and the moves were {}'.format(seed_best,R_best,a_best))
             print('Finished episode {}, total return: {}, total time: {} sec'.format(ep, np.round(R, 2),
                                                                                      np.round((time.time() - start), 1)))
+            
 
             # # Train
             # D.reshuffle()
@@ -423,8 +443,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--game', default='Pong-v0', help='Training environment')
     parser.add_argument('--n_ep', type=int, default=500, help='Number of episodes')
-    parser.add_argument('--n_mcts', type=int, default=40, help='Number of MCTS traces per step') #
-    parser.add_argument('--max_ep_len', type=int, default=15000, help='Maximum number of steps per episode')
+    parser.add_argument('--n_mcts', type=int, default=25, help='Number of MCTS traces per step') #
+    parser.add_argument('--max_ep_len', type=int, default=600, help='Maximum number of steps per episode')
     parser.add_argument('--lr', type=float, default=0.01, help='Learning rate')
     parser.add_argument('--c', type=float, default=1.5, help='UCT constant')
     parser.add_argument('--temp', type=float, default=1.0,
@@ -448,7 +468,6 @@ if __name__ == '__main__':
     print("BEST!!!")
     print('seed: {}, moves: {}, reward: {} sec'.format(seed_best, a_best,R_best))
     fig,ax = plt.subplots(1,figsize=[7,5])
-
 
     total_eps = len(episode_returns)
 #    episode_returns = np.convolve(episode_returns, np.ones(args.window)/args.window, mode='valid')
