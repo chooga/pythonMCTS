@@ -5,17 +5,16 @@ import gym
 import time
 import tensorflow as tf
 import numpy as np
-import tensorflow.contrib.slim as slim
+#import tensorflow.contrib.slim as slim
 import gym.spaces as spaces
 import random
 
-import matplotlib.pyplot as plt
-import cv2
+from tensorflow import keras
+from tensorflow.keras import layers, optimizers
 
-UP_ACTION = 2
-DOWN_ACTION = 3
-NO_OP_ACTION = 1
-constrained_actions = [NO_OP_ACTION, UP_ACTION, DOWN_ACTION]
+import matplotlib.pyplot as plt
+
+
 
 
 class Model(): #https://github.com/tmoer/alphazero_singleplayer/blob/db742bcbd61e1d62a6958136ca7bb2ae11053971/alphazero.py
@@ -26,49 +25,78 @@ class Model(): #https://github.com/tmoer/alphazero_singleplayer/blob/db742bcbd61
         if not self.action_discrete:
             raise ValueError('Continuous action space not implemented')
 
-        # Placeholders
-        if not self.state_discrete:
-            self.x = x = tf.placeholder("float32", shape=np.append(None, self.state_dim), name='x')  # state
-        else:
-            self.x = x = tf.placeholder("int32", shape=np.append(None, 1))  # state
-            x = tf.squeeze(tf.one_hot(x, self.state_dim, axis=1), axis=2)
-
-        x = tf.layers.flatten(x)
+        # # Placeholders
+        # if not self.state_discrete:
+        #     self.x = x = tf.placeholder("float32", shape=np.append(None, self.state_dim), name='x')  # state
+        # else:
+        #     self.x = x = tf.placeholder("int32", shape=np.append(None, 1))  # state
+        #     x = tf.squeeze(tf.one_hot(x, self.state_dim, axis=1), axis=2)
 
 
-        # Feedforward: Can be modified to any representation function, e.g. convolutions, residual networks, etc.
-        for i in range(n_hidden_layers):
-            x = slim.fully_connected(x, n_hidden_units, activation_fn=tf.nn.elu)
-
-        # Output
-        log_pi_hat = slim.fully_connected(x, 3, activation_fn=None)  #TODO second argument self.action_dim
-        self.pi_hat = tf.nn.softmax(log_pi_hat)  # policy head
-        self.V_hat = slim.fully_connected(x, 1, activation_fn=None)  # value head
+        # x = tf.layers.flatten(x)
 
 
-        # Loss
-        self.V = tf.placeholder("float32", shape=[None, 1], name='V')
-        self.pi = tf.placeholder("float32", shape=[None, self.action_dim], name='pi')
-        self.V_loss = tf.losses.mean_squared_error(labels=self.V, predictions=self.V_hat)
+        self.inputs = keras.Input(shape=(128,))
+        x = layers.Dense(64, activation="relu", name="dense1")(self.inputs)
+        x = layers.Dense(64, activation="relu", name="dense2")(x)
+        x = layers.Dense(64, activation="relu", name="dense3")(x)
 
-        self.pi_loss = tf.nn.softmax_cross_entropy_with_logits_v2(labels=self.pi, logits=log_pi_hat)
-        self.loss = self.V_loss + tf.reduce_mean(self.pi_loss)
+        log_pi_hat = layers.Dense(self.action_dim, activation="relu", name="log_pi_hat_layer")(x)
+        self.pi_hat = layers.Dense(self.action_dim, activation='softmax', name='pi')(x)  # batch_size x self.action_size
+        self.v_hat = layers.Dense(1, activation='tanh', name='v')(x)
 
-        self.lr = tf.Variable(lr, name="learning_rate", trainable=False)
-        optimizer = tf.train.RMSPropOptimizer(learning_rate=lr)
-        self.train_op = optimizer.minimize(self.loss)
+
+
+
+
+
+        # self.V_loss = tf.losses.mean_squared_error(labels=self.V, predictions=self.V_hat)
+        # self.pi_loss = tf.nn.softmax_cross_entropy_with_logits_v2(labels=self.pi, logits=log_pi_hat)
+        # self.loss = self.V_loss + tf.reduce_mean(self.pi_loss)
+        #
+        # self.lr = tf.Variable(lr, name="learning_rate", trainable=False)
+        # self.train_op = optimizer.minimize(self.loss)
+
+
+        self.tf_model = keras.Model(inputs=self.inputs, outputs=[self.pi_hat, self.v_hat])
+        self.tf_model.summary()
+        self.tf_model.compile(loss=['categorical_crossentropy', 'mean_squared_error'], optimizer=optimizers.Adam(lr))
+        print(self.tf_model.losses)
+        # # Feedforward: Can be modified to any representation function, e.g. convolutions, residual networks, etc.
+        # for i in range(n_hidden_layers):
+        #     x = slim.fully_connected(x, n_hidden_units, activation_fn=tf.nn.elu)
+        #
+        # # Output
+        # log_pi_hat = slim.fully_connected(x, 3, activation_fn=None)  #TODO second argument self.action_dim
+        # self.pi_hat = tf.nn.softmax(log_pi_hat)  # policy head
+        # self.V_hat = slim.fully_connected(x, 1, activation_fn=None)  # value head
+        #
+        #
+        # # Loss
+        # self.V = tf.placeholder("float32", shape=[None, 1], name='V')
+        # self.pi = tf.placeholder("float32", shape=[None, self.action_dim], name='pi')
+        # self.V_loss = tf.losses.mean_squared_error(labels=self.V, predictions=self.V_hat)
+        #
+        # self.pi_loss = tf.nn.softmax_cross_entropy_with_logits_v2(labels=self.pi, logits=log_pi_hat)
+        # self.loss = self.V_loss + tf.reduce_mean(self.pi_loss)
+        #
+        # self.lr = tf.Variable(lr, name="learning_rate", trainable=False)
+        # optimizer = tf.train.RMSPropOptimizer(learning_rate=lr)
+        # self.train_op = optimizer.minimize(self.loss)
 
     def train(self, sb, Vb, pib):
-        self.sess.run(self.train_op, feed_dict={self.x: preprocess(sb),
-                                                self.V: Vb,
-                                                self.pi: pib})
+        # self.sess.run(self.train_op, feed_dict={self.x: preprocess(sb),
+        #                                         self.V: Vb,
+        #                                         self.pi: pib})
+        self.tf_model.fit(x=sb, y=[Vb, pib], batch_size=32, epochs=1)
 
     def predict_V(self, s):
-        return self.sess.run(self.V_hat, feed_dict={self.x: preprocess(s)})
+        pi, v = self.tf_model.predict(s)
+        return v
 
     def predict_pi(self, s):
-        return self.sess.run(self.pi_hat, feed_dict={self.x: preprocess(s)})
-
+        pi, v = self.tf_model.predict(s)
+        return pi
 
 class Database():
 
@@ -111,10 +139,10 @@ class Database():
 
         if(self.sample_index + 2 * self.batch_size > self.size):
             indices = self.sample_array[self.sample_index:]
-            batch = [self.experience[i] for i in indices]
+            batch = [self.experiences[i] for i in indices]
         else:
             indices = self.sample_array[self.sample_index:self.sample_index + self.batch_size]
-            batch = [self.experience[i] for i in indices]
+            batch = [self.experiences[i] for i in indices]
         self.sample_index += self.batch_size
 
         arrays = []
@@ -145,17 +173,18 @@ class State():
         self.priors = model.predict_pi(index[None,]).flatten()
  #       self.priors = np.ones(len(self.child_actions))
 
-    def select(self, c=1.0): #alternativ value 2.5 or 1.0
+    def select(self, c=1.5): #alternativ value 2.5 or 1.0
         ''' Select one of the child actions based on UCT rule '''
         UCT = np.array(
-            [child_action.Q + prior * c * (np.sqrt(self.n + 1) / (child_action.n + 1)) for child_action, prior in
+            [child_action.Q + prior * c * (np.sqrt(np.log(self.n + 1) / (child_action.n + 1))) for child_action, prior in
              zip(self.child_actions, self.priors)])
         winner = argmax(UCT)
+#        print("self.child_actions[winner] {} and type {}".format(self.child_actions[winner],type(self.child_actions[winner])))
         return self.child_actions[winner]
 
     def evaluate(self):
         ''' Bootstrap the state value '''
-        self.V = np.squeeze(self.model.predict_V(self.index[None,])) if not self.terminal else np.array(0.0)
+        self.V = np.squeeze(self.model.predict_V(self.index)) if not self.terminal else np.array(0.0)
         #self.V = self.r
 
     def update(self):
@@ -201,11 +230,6 @@ class MCTS():
         else:
             self.root.parent_action = None  # continue from current root
         if self.root.terminal:
-#            env.render("human")
-            plt.imshow(self.root.index,aspect="auto")
-            plt.show()
-            print(self.root.n)
-            input("waiting")
             raise (ValueError("Can't do tree search from a terminal state"))
 
         env = getBaseEnv(env)
@@ -219,12 +243,13 @@ class MCTS():
             while not state.terminal:
                 action = state.select(c=c)
                 for frame in range(skip_frame):
+                    #print(action.index)
                     s1, r1, t, _ = mcts_env.step(action.index)
-                    cv2.imshow("dont care", s1)
+#                    mcts_env.render("human")
                     r += r1
                 r /= skip_frame
                 if hasattr(action, 'child_state'):
-                    state = action.child_state  # select
+                    state = action.child_state  #
                     continue
                 else:
                     state = action.add_child_state(s1, r, t, self.model)  # expand
@@ -245,6 +270,7 @@ class MCTS():
         if not hasattr(self.root.child_actions[a], 'child_state'):
             self.root = None
             self.root_index = s1
+            print("whaaat")
         elif np.linalg.norm(self.root.child_actions[a].child_state.index - s1) > 0.01:
             print('Warning: this domain seems stochastic. Not re-using the subtree for next search. ' +
                   'To deal with stochastic environments, implement progressive widening.')
@@ -252,14 +278,17 @@ class MCTS():
             self.root = None
             self.root_index = s1
         else:
+            print("okay")
             self.root = self.root.child_actions[a].child_state
 
     def return_results(self, temp):
         ''' Process the output at the root node '''
         counts = np.array([child_action.n for child_action in self.root.child_actions])
+        print("counts: {}".format(counts))
         Q = np.array([child_action.Q for child_action in self.root.child_actions])
         pi_target = stable_normalizer(counts, temp)
         V_target = np.sum((counts / np.sum(counts)) * Q)
+        print("pi_target: {}\n, V_target: {}".format(pi_target, V_target))
         return self.root.index, pi_target, V_target
 
 
@@ -274,6 +303,7 @@ def check_space(space):
         discrete = True
     else:
         raise NotImplementedError('This type of space is not supported')
+    print("the Dimention is {} and the space is {} discrete".format(dim,discrete))
     return dim, discrete
 
 
@@ -346,94 +376,97 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
     episode_returns = []  # storage
     timepoints = []
     # Environments
-    env = gym.make('Pong-v0')
-    mctsEnv = gym.make('Pong-v0')
+    env = gym.make('Pong-ram-v0')
+    mctsEnv = gym.make('Pong-ram-v0')
     env = getBaseEnv(env)
     mctsEnv = getBaseEnv(mctsEnv)
 
     D = Database(max_size=data_size, batch_size=batch_size)
     model = Model(Env=env, lr=lr, n_hidden_layers=n_hidden_layers, n_hidden_units=n_hidden_units)
+    action_dim, _ = check_space(env.action_space)
+
+
+
     t_total = 0  # total steps
     R_best = -np.Inf
 
-    cfg = dict({
-        'allow_soft_placement': False,
-        'log_device_placement': False
-    })
-    utility = 1
-    if utility > 0.0:
-        print('GPU mode with {} usage'.format(utility))
-        cfg['gpu_options'] = tf.GPUOptions(
-            per_process_gpu_memory_fraction=utility)
-        cfg['allow_soft_placement'] = True
-    else:
-        print('Running entirely on CPU')
-        cfg['device_count'] = {'GPU': 0}
+    # cfg = dict({
+    #     'allow_soft_placement': False,
+    #     'log_device_placement': False
+    # })
+    # utility = 1
+    # if utility > 0.0:
+    #     print('GPU mode with {} usage'.format(utility))
+    #     cfg['gpu_options'] = tf.GPUOptions(
+    #         per_process_gpu_memory_fraction=utility)
+    #     cfg['allow_soft_placement'] = True
+    # else:
+    #     print('Running entirely on CPU')
+    #     cfg['device_count'] = {'GPU': 0}
 
-    with tf.Session(config=tf.ConfigProto(**cfg)) as sess:
-        model.sess = sess
-        sess.run(tf.global_variables_initializer())
-        for ep in range(n_ep):
-            print(model.sess.summury())
-            start = time.time()
-            s = env.reset()
-            R = 0.0  # Total return counter
-            a_store = []
-            seed = np.random.randint(1e7)  # draw some Env seed
-            env.seed(seed)
-            mctsEnv.reset()
-            mctsEnv.seed(seed)
+    # with tf.Session() as sess: #session argument TODO config=tf.ConfigProto(**cfg)
+    #     model.sess = sess
+    #     sess.run(tf.global_variables_initializer())
+    for ep in range(n_ep):
+        start = time.time()
+        s = env.reset()
+        R = 0.0  # Total return counter
+        a_store = []
+        seed = np.random.randint(1e7)  # draw some Env seed
+        env.seed(seed)
+        mctsEnv.reset()
+        mctsEnv.seed(seed)
 
-            mcts = MCTS(root_index=s, root=None, model=model, na=len(constrained_actions), gamma=gamma)  # the object responsible for MCTS searches TODO #na=model.action_dim
-            for t in range(max_ep_len):
-                # MCTS step
-                mcts.search(n_mcts=n_mcts, c=c, env=env, mcts_env=mctsEnv, skip_frame=skip_frame)  # perform a forward search
-                state, pi, V = mcts.return_results(temp)  # extract the root output
+        mcts = MCTS(root_index=s, root=None, model=model, na=model.action_dim, gamma=gamma)  # the object responsible for MCTS searches TODO #na=model.action_dim
+        for t in range(max_ep_len):
+            # MCTS step
+            mcts.search(n_mcts=n_mcts, c=c, env=env, mcts_env=mctsEnv, skip_frame=skip_frame)  # perform a forward search
+            state, pi, V = mcts.return_results(temp)  # extract the root output
 
-                pi = applynoise(pi)
-                D.store((state, V, pi))
-                # Make the true step
-                a = np.random.choice(len(pi), p=pi)
-                a_store.append(a+1)
+            #                pi = applynoise(pi)
+            D.store((state, V, pi))
+            # Make the true step
+            a = np.random.choice(len(pi), p=pi)
+            a_store.append(a+1)
+            #                 s1, r, terminal, _ = env.step(a+1)
+            env.render("human")
+            # #                if (r > 0):
+            # #                    input("waiting")
+            #                 R += r
+            for skfr in range(skip_frame):
                 s1, r, terminal, _ = env.step(a+1)
-#                env.render("human")
-#                if (r > 0):
-#                    input("waiting")
+                #                    if (r > 0):
+                #                        input("waiting")
                 R += r
-                for skfr in range(skip_frame-1):
-                    s1, r, terminal, _ = env.step(a+1)
-#                    if (r > 0):
-#                        input("waiting")
-                    R += r
-                    if terminal:
-                        break
-                else:
-                    continue
-                t_total += n_mcts  # total number of environment steps (counts the mcts steps)
                 if terminal:
                     break
-                else:
-                    mcts.forward(a, s1)
+            else:
+                continue
+            t_total += n_mcts  # total number of environment steps (counts the mcts steps)
+            if terminal:
+                break
+            else:
+                mcts.forward(a, s1)
 
-            # Finished episode
-            episode_returns.append(R)  # store the total episode return
-            timepoints.append(t_total)  # store the timestep count of the episode return
-            store_safely(os.getcwd(), 'result', {'R': episode_returns, 't': timepoints})
+        # Finished episode
+        episode_returns.append(R)  # store the total episode return
+        timepoints.append(t_total)  # store the timestep count of the episode return
+        store_safely(os.getcwd(), 'result', {'R': episode_returns, 't': timepoints})
 
-            if R > R_best:
-                a_best = a_store
-                seed_best = seed
-                R_best = R
-                print('new best with seed {} had the R {} and the moves were {}'.format(seed_best,R_best,a_best))
-            print('Finished episode {}, total return: {}, total time: {} sec'.format(ep, np.round(R, 2),
-                                                                                     np.round((time.time() - start), 1)))
-            
+        if R > R_best:
+            a_best = a_store
+            seed_best = seed
+            R_best = R
+            print('new best with seed {} had the R {} and the moves were {}'.format(seed_best,R_best,a_best))
+        print('Finished episode {}, total return: {}, total time: {} sec'.format(ep, np.round(R, 2),
+                                                                                 np.round((time.time() - start), 1)))
 
-            # # Train
-            # D.reshuffle()
-            # for epoch in range(1):
-            #     for sb, Vb, pib in D:
-            #         model.train(sb, Vb, pib)
+
+        # Train
+        D.reshuffle()
+        for epoch in range(1):
+            for sb, Vb, pib in D:
+                model.train(sb, Vb, pib)
     return episode_returns, timepoints, a_best, seed_best, R_best
 
 
@@ -443,11 +476,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--game', default='Pong-v0', help='Training environment')
     parser.add_argument('--n_ep', type=int, default=500, help='Number of episodes')
-    parser.add_argument('--n_mcts', type=int, default=25, help='Number of MCTS traces per step') #
+    parser.add_argument('--n_mcts', type=int, default=20, help='Number of MCTS traces per step') #
     parser.add_argument('--max_ep_len', type=int, default=600, help='Maximum number of steps per episode')
     parser.add_argument('--lr', type=float, default=0.01, help='Learning rate')
     parser.add_argument('--c', type=float, default=1.5, help='UCT constant')
-    parser.add_argument('--temp', type=float, default=1.0,
+    parser.add_argument('--temp', type=float, default=0.1,
                         help='Temperature in normalization of counts to policy target')
     parser.add_argument('--gamma', type=float, default=0.975, help='Discount parameter') #
     parser.add_argument('--data_size', type=int, default=1000, help='Dataset size (FIFO)')
