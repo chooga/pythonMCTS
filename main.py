@@ -11,8 +11,9 @@ import random
 
 from tensorflow import keras
 from tensorflow.keras import layers, optimizers
-
+import pydot
 import matplotlib.pyplot as plt
+from PIL import Image
 
 
 
@@ -36,12 +37,13 @@ class Model(): #https://github.com/tmoer/alphazero_singleplayer/blob/db742bcbd61
         # x = tf.layers.flatten(x)
 
 
-        self.inputs = keras.Input(shape=(128,))
-        x = layers.Dense(64, activation="relu", name="dense1")(self.inputs)
+        self.inputs = keras.Input(shape=(self.state_dim))
+        x = layers.Flatten()(self.inputs)
+        x = layers.Dense(64, activation="relu", name="dense1")(x)
         x = layers.Dense(64, activation="relu", name="dense2")(x)
         x = layers.Dense(64, activation="relu", name="dense3")(x)
 
-        log_pi_hat = layers.Dense(self.action_dim, activation="relu", name="log_pi_hat_layer")(x)
+        #log_pi_hat = layers.Dense(self.action_dim, activation="relu", name="log_pi_hat_layer")(x)
         self.pi_hat = layers.Dense(self.action_dim, activation='softmax', name='pi')(x)  # batch_size x self.action_size
         self.v_hat = layers.Dense(1, activation='tanh', name='v')(x)
 
@@ -61,7 +63,6 @@ class Model(): #https://github.com/tmoer/alphazero_singleplayer/blob/db742bcbd61
         self.tf_model = keras.Model(inputs=self.inputs, outputs=[self.pi_hat, self.v_hat])
         self.tf_model.summary()
         self.tf_model.compile(loss=['categorical_crossentropy', 'mean_squared_error'], optimizer=optimizers.Adam(lr))
-        print(self.tf_model.losses)
         # # Feedforward: Can be modified to any representation function, e.g. convolutions, residual networks, etc.
         # for i in range(n_hidden_layers):
         #     x = slim.fully_connected(x, n_hidden_units, activation_fn=tf.nn.elu)
@@ -88,13 +89,15 @@ class Model(): #https://github.com/tmoer/alphazero_singleplayer/blob/db742bcbd61
         # self.sess.run(self.train_op, feed_dict={self.x: preprocess(sb),
         #                                         self.V: Vb,
         #                                         self.pi: pib})
-        self.tf_model.fit(x=sb, y=[Vb, pib], batch_size=32, epochs=1)
+        self.tf_model.fit(x=sb, y=[pib, Vb], batch_size=None, epochs=1)
 
     def predict_V(self, s):
+        s = np.expand_dims(s, axis=0)
         pi, v = self.tf_model.predict(s)
         return v
 
     def predict_pi(self, s):
+        s = np.expand_dims(s, axis=0)
         pi, v = self.tf_model.predict(s)
         return pi
 
@@ -169,8 +172,8 @@ class State():
         self.evaluate()
         # Child actions
         self.na = na
-        self.child_actions = [Action(a+1, parent_state=self, Q_init=self.V) for a in range(na)] #TODO constrained actionspace "+1" added
-        self.priors = model.predict_pi(index[None,]).flatten()
+        self.child_actions = [Action(convAction(a), parent_state=self, Q_init=0.0) for a in range(na)] #TODO constrained actionspace "+1" added
+        self.priors = model.predict_pi(index).flatten()
  #       self.priors = np.ones(len(self.child_actions))
 
     def select(self, c=1.5): #alternativ value 2.5 or 1.0
@@ -236,6 +239,11 @@ class MCTS():
         snapshot = env.clone_full_state()  # for Atari: snapshot the root at the beginning
 
         for i in range(n_mcts):
+            # if(i == n_mcts):
+            #     depth = 0
+            #     graph = pydot.Dot("mygraph{}".format(random.randint()), graph_type="graph")
+            #     graph.add_node(pydot.Node("root", shape="box"))
+            #     graph = safe_graph(self.root, graph, "root", depth)
             state = self.root  # reset to root for new trace
             mcts_env.restore_full_state(snapshot)
             r = 0
@@ -245,6 +253,7 @@ class MCTS():
                 for frame in range(skip_frame):
                     #print(action.index)
                     s1, r1, t, _ = mcts_env.step(action.index)
+                    s1 = np.array(s1) / 255
 #                    mcts_env.render("human")
                     r += r1
                 r /= skip_frame
@@ -266,11 +275,20 @@ class MCTS():
 
     def forward(self, a, s1):
         ''' Move the root forward '''
+
+        # s = (np.array(s1) * 255)
+        # s = s.astype(np.uint8)
+        # a1 = np.array(self.root.child_actions[a].child_state.index) * 255
+        # a1 = a1.astype(np.uint8)
+        # data = a1 - s
+        # img = Image.fromarray(data)
+        # img = img.resize((4,512))
+        # print(img.size)
+        # img.show()
         #index_diff = np.linalg.norm(self.root.child_actions[a].child_state.index - s1)
         if not hasattr(self.root.child_actions[a], 'child_state'):
             self.root = None
             self.root_index = s1
-            print("whaaat")
         elif np.linalg.norm(self.root.child_actions[a].child_state.index - s1) > 0.01:
             print('Warning: this domain seems stochastic. Not re-using the subtree for next search. ' +
                   'To deal with stochastic environments, implement progressive widening.')
@@ -278,7 +296,6 @@ class MCTS():
             self.root = None
             self.root_index = s1
         else:
-            print("okay")
             self.root = self.root.child_actions[a].child_state
 
     def return_results(self, temp):
@@ -286,6 +303,7 @@ class MCTS():
         counts = np.array([child_action.n for child_action in self.root.child_actions])
         print("counts: {}".format(counts))
         Q = np.array([child_action.Q for child_action in self.root.child_actions])
+        print(f"Q: {Q}")
         pi_target = stable_normalizer(counts, temp)
         V_target = np.sum((counts / np.sum(counts)) * Q)
         print("pi_target: {}\n, V_target: {}".format(pi_target, V_target))
@@ -293,6 +311,19 @@ class MCTS():
 
 
 # helpers-methods
+def safe_graph(node, graph, callerNodeName, depth):
+    #state box, action circle
+    while node.child_actions[0].child_state != None:
+        depth += 1
+        for child_a in len(node.child_actions):
+            new_node_name = f"{depth} {child_a.index} {child_a.n}"
+            graph.add_node(new_node_name, shape="box")
+            graph.add_edge(pydot.Edge(callerNodeName, new_node_name))
+            safe_graph(child_a.child_state, graph, new_node_name, depth)
+
+    return 0
+
+
 def check_space(space):
     ''' Check the properties of an environment state or action space '''
     if isinstance(space,spaces.Box):
@@ -366,18 +397,20 @@ def preprocess(I): #https://gist.github.com/karpathy/a4166c7fe253700972fcbc77e4e
 #class PlaningModel(Env=env, lr=lr, n_hidden_layers=n_hidden_layers):
 
 
-def applynoise(pi,epsilon=0.25,na=3):
+def applyNoise(pi, epsilon=0.25, na=3):
     x = np.random.dirichlet([1/na] * len(pi))
     x += pi
     return x/sum(x)
 
+def convAction(a):
+    return a+1
 
 def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n_hidden_layers,n_hidden_units, skip_frame):
     episode_returns = []  # storage
     timepoints = []
     # Environments
-    env = gym.make('Pong-ram-v0')
-    mctsEnv = gym.make('Pong-ram-v0')
+    env = gym.make('Pong-ramNoFrameskip-v4')
+    mctsEnv = gym.make('Pong-ramNoFrameskip-v4')
     env = getBaseEnv(env)
     mctsEnv = getBaseEnv(mctsEnv)
 
@@ -423,25 +456,25 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
             mcts.search(n_mcts=n_mcts, c=c, env=env, mcts_env=mctsEnv, skip_frame=skip_frame)  # perform a forward search
             state, pi, V = mcts.return_results(temp)  # extract the root output
 
-            #                pi = applynoise(pi)
+            #                pi = applyNoise(pi)
             D.store((state, V, pi))
             # Make the true step
             a = np.random.choice(len(pi), p=pi)
-            a_store.append(a+1)
+            print(convAction(a))
+            a_store.append(convAction(a))
             #                 s1, r, terminal, _ = env.step(a+1)
-            env.render("human")
+#            env.render("human")
             # #                if (r > 0):
             # #                    input("waiting")
             #                 R += r
             for skfr in range(skip_frame):
-                s1, r, terminal, _ = env.step(a+1)
+                s1, r, terminal, _ = env.step(convAction(a))
+                s1 = np.array(s1) / 255
                 #                    if (r > 0):
                 #                        input("waiting")
                 R += r
                 if terminal:
                     break
-            else:
-                continue
             t_total += n_mcts  # total number of environment steps (counts the mcts steps)
             if terminal:
                 break
@@ -476,11 +509,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--game', default='Pong-v0', help='Training environment')
     parser.add_argument('--n_ep', type=int, default=500, help='Number of episodes')
-    parser.add_argument('--n_mcts', type=int, default=20, help='Number of MCTS traces per step') #
+    parser.add_argument('--n_mcts', type=int, default=30, help='Number of MCTS traces per step') #
     parser.add_argument('--max_ep_len', type=int, default=600, help='Maximum number of steps per episode')
     parser.add_argument('--lr', type=float, default=0.01, help='Learning rate')
     parser.add_argument('--c', type=float, default=1.5, help='UCT constant')
-    parser.add_argument('--temp', type=float, default=0.1,
+    parser.add_argument('--temp', type=float, default=1,
                         help='Temperature in normalization of counts to policy target')
     parser.add_argument('--gamma', type=float, default=0.975, help='Discount parameter') #
     parser.add_argument('--data_size', type=int, default=1000, help='Dataset size (FIFO)')
@@ -489,7 +522,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--n_hidden_layers', type=int, default=2, help='Number of hidden layers in NN')
     parser.add_argument('--n_hidden_units', type=int, default=128, help='Number of units per hidden layers in NN')
-    parser.add_argument('--skip_frame', type=int, default=3, help='Number of frames skipped between two agent observations') #
+    parser.add_argument('--skip_frame', type=int, default=4, help='Number of frames skipped between two agent observations') #
 
     args = parser.parse_args()
 

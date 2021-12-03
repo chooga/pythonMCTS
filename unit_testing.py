@@ -12,7 +12,7 @@ import numpy as np
 import gym.spaces as spaces
 import random
 from PIL import Image
-from main import Database, getBaseEnv, MCTS, applynoise, check_space, preprocess, Model
+from main import Database, getBaseEnv, MCTS, applyNoise, check_space, preprocess, Model
 from baselines.common.atari_wrappers import make_atari, wrap_deepmind
 
 #this unit test is about giving the agent a reproducable environment and see whether the agent is capable of blocking the first hit
@@ -108,7 +108,7 @@ def main(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n_hidd
                                 skip_frame=skip_frame)  # perform a forward search
                 state, pi, V = mcts.return_results(temp)  # extract the root output
 
-                pi = applynoise(pi)
+                pi = applyNoise(pi)
                 D.store((state, V, pi))
     # Make the true step
                 a = np.random.choice(len(pi), p=pi)
