@@ -14,6 +14,7 @@ from tensorflow.keras import layers, optimizers
 import pydot
 import matplotlib.pyplot as plt
 from PIL import Image
+from math import log, sqrt
 
 
 
@@ -36,13 +37,15 @@ class Model(): #https://github.com/tmoer/alphazero_singleplayer/blob/db742bcbd61
 
         # x = tf.layers.flatten(x)
 
-
         self.inputs = keras.Input(shape=(self.state_dim))
         x = layers.Flatten()(self.inputs)
+        # x = layers.Conv2D(3, 3, padding='same', use_bias=False)(self.inputs)
+        # x = layers.Conv2D(3, 3, padding='same', use_bias=False)(x)
+        # x = layers.Conv2D(3, 3, padding='valid', use_bias=False)(x)
         x = layers.Dense(64, activation="relu", name="dense1")(x)
         x = layers.Dense(64, activation="relu", name="dense2")(x)
         x = layers.Dense(64, activation="relu", name="dense3")(x)
-
+        x = layers.Flatten()(x)
         #log_pi_hat = layers.Dense(self.action_dim, activation="relu", name="log_pi_hat_layer")(x)
         self.pi_hat = layers.Dense(self.action_dim, activation='softmax', name='pi')(x)  # batch_size x self.action_size
         self.v_hat = layers.Dense(1, activation='tanh', name='v')(x)
@@ -85,7 +88,7 @@ class Model(): #https://github.com/tmoer/alphazero_singleplayer/blob/db742bcbd61
         # optimizer = tf.train.RMSPropOptimizer(learning_rate=lr)
         # self.train_op = optimizer.minimize(self.loss)
 
-    def train(self, sb, Vb, pib):
+    def train(self, sb, pib, Vb):
         # self.sess.run(self.train_op, feed_dict={self.x: preprocess(sb),
         #                                         self.V: Vb,
         #                                         self.pi: pib})
@@ -169,20 +172,31 @@ class State():
         self.n = 0
         self.model = model
 
+        self.cyclerVariable = 0
         self.evaluate()
         # Child actions
         self.na = na
         self.child_actions = [Action(convAction(a), parent_state=self, Q_init=0.0) for a in range(na)] #TODO constrained actionspace "+1" added
         self.priors = model.predict_pi(index).flatten()
+        #print(type(self.priors))
  #       self.priors = np.ones(len(self.child_actions))
 
-    def select(self, c=1.5): #alternativ value 2.5 or 1.0
+    def select(self, c=1.0): #alternativ value 2.5 or 1.0
         ''' Select one of the child actions based on UCT rule '''
+
+        # values_actions = np.array(
+        #     [child_action.Q + prior * c * (np.sqrt((self.n) / (child_action.n or 1))) for child_action, prior
+        #      in
+        #      zip(self.child_actions, self.priors)])
         UCT = np.array(
-            [child_action.Q + prior * c * (np.sqrt(np.log(self.n + 1) / (child_action.n + 1))) for child_action, prior in
-             zip(self.child_actions, self.priors)])
+            [child_action.Q + c * (np.sqrt((self.n + 1) / (child_action.n + 1))) for child_action in self.child_actions])
+        #print(f"UCT: {UCT}")
+        #secondargument= np.array([c * (np.sqrt(np.log(self.n + 1) / (child_action.n + 1))) for child_action in self.child_actions])
         winner = argmax(UCT)
-#        print("self.child_actions[winner] {} and type {}".format(self.child_actions[winner],type(self.child_actions[winner])))
+        #print(winner)
+        # if (self.cyclerVariable % 17 == 0):
+        #     #print(winner)
+        #     self.cyclerVariable +=1
         return self.child_actions[winner]
 
     def evaluate(self):
@@ -245,6 +259,9 @@ class MCTS():
             #     graph.add_node(pydot.Node("root", shape="box"))
             #     graph = safe_graph(self.root, graph, "root", depth)
             state = self.root  # reset to root for new trace
+            # img = Image.fromarray(state.index)
+            # img.show()
+            # img.close()
             mcts_env.restore_full_state(snapshot)
             r = 0
 
@@ -301,6 +318,7 @@ class MCTS():
     def return_results(self, temp):
         ''' Process the output at the root node '''
         counts = np.array([child_action.n for child_action in self.root.child_actions])
+        print(self.root)
         print("counts: {}".format(counts))
         Q = np.array([child_action.Q for child_action in self.root.child_actions])
         print(f"Q: {Q}")
@@ -452,18 +470,20 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
 
         mcts = MCTS(root_index=s, root=None, model=model, na=model.action_dim, gamma=gamma)  # the object responsible for MCTS searches TODO #na=model.action_dim
         for t in range(max_ep_len):
+            if t == max_ep_len/30:
+                time.sleep(2)
             # MCTS step
             mcts.search(n_mcts=n_mcts, c=c, env=env, mcts_env=mctsEnv, skip_frame=skip_frame)  # perform a forward search
             state, pi, V = mcts.return_results(temp)  # extract the root output
 
-            #                pi = applyNoise(pi)
-            D.store((state, V, pi))
+            #pi_changed = applyNoise(pi)
+            D.store((state, pi, V))
             # Make the true step
             a = np.random.choice(len(pi), p=pi)
             print(convAction(a))
             a_store.append(convAction(a))
             #                 s1, r, terminal, _ = env.step(a+1)
-#            env.render("human")
+            env.render("human")
             # #                if (r > 0):
             # #                    input("waiting")
             #                 R += r
@@ -491,6 +511,8 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
             seed_best = seed
             R_best = R
             print('new best with seed {} had the R {} and the moves were {}'.format(seed_best,R_best,a_best))
+        else:
+            print('new worse score with seed {} had the R {} and the moves were {}'.format(seed,R,a_store))
         print('Finished episode {}, total return: {}, total time: {} sec'.format(ep, np.round(R, 2),
                                                                                  np.round((time.time() - start), 1)))
 
@@ -498,8 +520,8 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
         # Train
         D.reshuffle()
         for epoch in range(1):
-            for sb, Vb, pib in D:
-                model.train(sb, Vb, pib)
+            for sb, pib, V in D:
+                model.train(sb, pib, V)
     return episode_returns, timepoints, a_best, seed_best, R_best
 
 
@@ -509,13 +531,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--game', default='Pong-v0', help='Training environment')
     parser.add_argument('--n_ep', type=int, default=500, help='Number of episodes')
-    parser.add_argument('--n_mcts', type=int, default=30, help='Number of MCTS traces per step') #
+    parser.add_argument('--n_mcts', type=int, default=50, help='Number of MCTS traces per step') #
     parser.add_argument('--max_ep_len', type=int, default=600, help='Maximum number of steps per episode')
     parser.add_argument('--lr', type=float, default=0.01, help='Learning rate')
     parser.add_argument('--c', type=float, default=1.5, help='UCT constant')
-    parser.add_argument('--temp', type=float, default=1,
+    parser.add_argument('--temp', type=float, default=1.5,
                         help='Temperature in normalization of counts to policy target')
-    parser.add_argument('--gamma', type=float, default=0.975, help='Discount parameter') #
+    parser.add_argument('--gamma', type=float, default=0.90, help='Discount parameter') #
     parser.add_argument('--data_size', type=int, default=1000, help='Dataset size (FIFO)')
     parser.add_argument('--batch_size', type=int, default=32, help='Minibatch size')
     parser.add_argument('--window', type=int, default=25, help='Smoothing window for visualization')
@@ -525,6 +547,8 @@ if __name__ == '__main__':
     parser.add_argument('--skip_frame', type=int, default=4, help='Number of frames skipped between two agent observations') #
 
     args = parser.parse_args()
+
+    print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
     episode_returns,timepoints,a_best,seed_best,R_best = MCTSAgent(game=args.game,n_ep=args.n_ep,n_mcts=args.n_mcts,
                                         max_ep_len=args.max_ep_len,lr=args.lr,c=args.c,gamma=args.gamma,
