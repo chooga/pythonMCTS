@@ -428,8 +428,8 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
     episode_returns = []  # storage
     timepoints = []
     # Environments
-    env = gym.make('Pong-ramNoFrameskip-v4')
-    mctsEnv = gym.make('Pong-ramNoFrameskip-v4')
+    env = gym.make('Pong-ram-v4')
+    mctsEnv = gym.make('Pong-ram-v4')
     env = getBaseEnv(env)
     mctsEnv = getBaseEnv(mctsEnv)
 
