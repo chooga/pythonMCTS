@@ -184,15 +184,14 @@ class State():
     def select(self, c=1.0): #alternativ value 2.5 or 1.0
         ''' Select one of the child actions based on UCT rule '''
 
-        # values_actions = np.array(
-        #     [child_action.Q + prior * c * (np.sqrt((self.n) / (child_action.n or 1))) for child_action, prior
-        #      in
-        #      zip(self.child_actions, self.priors)])
-        UCT = np.array(
-            [child_action.Q + c * (np.sqrt((self.n + 1) / (child_action.n + 1))) for child_action in self.child_actions])
-        #print(f"UCT: {UCT}")
-        #secondargument= np.array([c * (np.sqrt(np.log(self.n + 1) / (child_action.n + 1))) for child_action in self.child_actions])
-        winner = argmax(UCT)
+        UCT1= np.array([child_action.Q + c * np.sqrt(self.n) * (prior / (1 + child_action.n)) for child_action,prior in zip(self.child_actions,self.priors)])
+        # UCT = np.array(
+        #     [child_action.Q + c * (np.sqrt((self.n) / (child_action.n or 0.01))) for child_action in self.child_actions])
+        #print(f"priors: {self.priors}")
+        secondargument= np.array([c * (np.sqrt(np.log(self.n + 1) / (child_action.n + 1))) for child_action in self.child_actions])
+        #print(f"exploitation: {secondargument}")
+        #print(f"UCT: {UCT1}")
+        winner = argmax(UCT1)
         #print(winner)
         # if (self.cyclerVariable % 17 == 0):
         #     #print(winner)
@@ -274,6 +273,8 @@ class MCTS():
 #                    mcts_env.render("human")
                     r += r1
                 r /= skip_frame
+                if(r> 0):
+                    time.sleep(5)
                 if hasattr(action, 'child_state'):
                     state = action.child_state  #
                     continue
@@ -457,7 +458,7 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
 
     # with tf.Session() as sess: #session argument TODO config=tf.ConfigProto(**cfg)
     #     model.sess = sess
-    #     sess.run(tf.global_variables_initializer())
+    #     sess.run(tf.global_variables_initializer())<
     for ep in range(n_ep):
         start = time.time()
         s = env.reset()
@@ -470,8 +471,6 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
 
         mcts = MCTS(root_index=s, root=None, model=model, na=model.action_dim, gamma=gamma)  # the object responsible for MCTS searches TODO #na=model.action_dim
         for t in range(max_ep_len):
-            if t == max_ep_len/30:
-                time.sleep(2)
             # MCTS step
             mcts.search(n_mcts=n_mcts, c=c, env=env, mcts_env=mctsEnv, skip_frame=skip_frame)  # perform a forward search
             state, pi, V = mcts.return_results(temp)  # extract the root output
@@ -492,6 +491,8 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
                 s1 = np.array(s1) / 255
                 #                    if (r > 0):
                 #                        input("waiting")
+                if(r!= 0):
+                    print(f"scored{r}")
                 R += r
                 if terminal:
                     break
@@ -510,7 +511,7 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
             a_best = a_store
             seed_best = seed
             R_best = R
-            print('new best with seed {} had the R {} and the moves were {}'.format(seed_best,R_best,a_best))
+            print('new best score with seed {} had the R {} and the moves were {}'.format(seed_best,R_best,a_best))
         else:
             print('new worse score with seed {} had the R {} and the moves were {}'.format(seed,R,a_store))
         print('Finished episode {}, total return: {}, total time: {} sec'.format(ep, np.round(R, 2),
@@ -531,13 +532,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--game', default='Pong-v0', help='Training environment')
     parser.add_argument('--n_ep', type=int, default=500, help='Number of episodes')
-    parser.add_argument('--n_mcts', type=int, default=50, help='Number of MCTS traces per step') #
-    parser.add_argument('--max_ep_len', type=int, default=600, help='Maximum number of steps per episode')
+    parser.add_argument('--n_mcts', type=int, default=40, help='Number of MCTS traces per step') #
+    parser.add_argument('--max_ep_len', type=int, default=1500, help='Maximum number of steps per episode')
     parser.add_argument('--lr', type=float, default=0.01, help='Learning rate')
     parser.add_argument('--c', type=float, default=1.5, help='UCT constant')
     parser.add_argument('--temp', type=float, default=1.5,
                         help='Temperature in normalization of counts to policy target')
-    parser.add_argument('--gamma', type=float, default=0.90, help='Discount parameter') #
+    parser.add_argument('--gamma', type=float, default=0.99, help='Discount parameter') #
     parser.add_argument('--data_size', type=int, default=1000, help='Dataset size (FIFO)')
     parser.add_argument('--batch_size', type=int, default=32, help='Minibatch size')
     parser.add_argument('--window', type=int, default=25, help='Smoothing window for visualization')
