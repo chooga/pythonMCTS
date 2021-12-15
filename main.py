@@ -547,8 +547,9 @@ if __name__ == '__main__':
     parser.add_argument('--n_hidden_layers', type=int, default=2, help='Number of hidden layers in NN')
     parser.add_argument('--n_hidden_units', type=int, default=128, help='Number of units per hidden layers in NN')
     parser.add_argument('--skip_frame', type=int, default=4, help='Number of frames skipped between two agent observations') 
-    parser.add_argument('--render_true', type=bool, default=0, help='Number of frames skipped between two agent observations') 
-    
+    parser.add_argument('--feature', dest='render_true', action='store_true')
+    parser.add_argument('--no-feature', dest='render_true', action='store_false')
+    parser.set_defaults(render_true=True)
 
     args = parser.parse_args()
 
