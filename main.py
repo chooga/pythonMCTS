@@ -424,7 +424,7 @@ def applyNoise(pi, epsilon=0.25, na=3):
 def convAction(a):
     return a+1
 
-def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n_hidden_layers,n_hidden_units, skip_frame):
+def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n_hidden_layers,n_hidden_units, skip_frame, render_true):
     episode_returns = []  # storage
     timepoints = []
     # Environments
@@ -482,7 +482,8 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
             print(convAction(a))
             a_store.append(convAction(a))
             #                 s1, r, terminal, _ = env.step(a+1)
-            env.render("human")
+            if(render_true == 1):
+                env.render("human")
             # #                if (r > 0):
             # #                    input("waiting")
             #                 R += r
@@ -545,7 +546,9 @@ if __name__ == '__main__':
 
     parser.add_argument('--n_hidden_layers', type=int, default=2, help='Number of hidden layers in NN')
     parser.add_argument('--n_hidden_units', type=int, default=128, help='Number of units per hidden layers in NN')
-    parser.add_argument('--skip_frame', type=int, default=4, help='Number of frames skipped between two agent observations') #
+    parser.add_argument('--skip_frame', type=int, default=4, help='Number of frames skipped between two agent observations') 
+    parser.add_argument('--render_true', type=bool, default=0, help='Number of frames skipped between two agent observations') 
+    
 
     args = parser.parse_args()
 
@@ -554,7 +557,7 @@ if __name__ == '__main__':
     episode_returns,timepoints,a_best,seed_best,R_best = MCTSAgent(game=args.game,n_ep=args.n_ep,n_mcts=args.n_mcts,
                                         max_ep_len=args.max_ep_len,lr=args.lr,c=args.c,gamma=args.gamma,
                                         data_size=args.data_size,batch_size=args.batch_size,temp=args.temp,
-                                        n_hidden_layers=args.n_hidden_layers,n_hidden_units=args.n_hidden_units,skip_frame=args.skip_frame)
+                                        n_hidden_layers=args.n_hidden_layers,n_hidden_units=args.n_hidden_units,skip_frame=args.skip_frame, render_true = args.render_true)
 
     print("BEST!!!")
     print('seed: {}, moves: {}, reward: {} sec'.format(seed_best, a_best,R_best))
