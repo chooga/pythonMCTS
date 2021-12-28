@@ -1,4 +1,5 @@
 import argparse
+import datetime
 import os
 
 import gym
@@ -13,6 +14,8 @@ from tensorflow import keras
 from tensorflow.keras import layers, optimizers
 import pydot
 import matplotlib.pyplot as plt
+
+from rtpt import RTPT
 from PIL import Image
 from math import log, sqrt
 
@@ -66,6 +69,10 @@ class Model(): #https://github.com/tmoer/alphazero_singleplayer/blob/db742bcbd61
         self.tf_model = keras.Model(inputs=self.inputs, outputs=[self.pi_hat, self.v_hat])
         self.tf_model.summary()
         self.tf_model.compile(loss=['categorical_crossentropy', 'mean_squared_error'], optimizer=optimizers.Adam(lr))
+
+        log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        self.tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
+
         # # Feedforward: Can be modified to any representation function, e.g. convolutions, residual networks, etc.
         # for i in range(n_hidden_layers):
         #     x = slim.fully_connected(x, n_hidden_units, activation_fn=tf.nn.elu)
@@ -92,7 +99,7 @@ class Model(): #https://github.com/tmoer/alphazero_singleplayer/blob/db742bcbd61
         # self.sess.run(self.train_op, feed_dict={self.x: preprocess(sb),
         #                                         self.V: Vb,
         #                                         self.pi: pib})
-        self.tf_model.fit(x=sb, y=[pib, Vb], batch_size=None, epochs=1)
+        self.tf_model.fit(x=sb, y=[pib, Vb], batch_size=None, epochs=1, callbacks=[self.tensorboard_callback]) #meeting
 
     def predict_V(self, s):
         s = np.expand_dims(s, axis=0)
@@ -427,6 +434,10 @@ def convAction(a):
 def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n_hidden_layers,n_hidden_units, skip_frame, render_true):
     episode_returns = []  # storage
     timepoints = []
+
+    rtpt = RTPT(name_initials='RM', experiment_name='pythonMCTS', max_iterations=args.n_ep)
+    rtpt.start()
+
     # Environments
     env = gym.make('Pong-ramNoFrameskip-v4')
     mctsEnv = gym.make('Pong-ramNoFrameskip-v4')
@@ -470,6 +481,7 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
         mctsEnv.seed(seed)
 
         mcts = MCTS(root_index=s, root=None, model=model, na=model.action_dim, gamma=gamma)  # the object responsible for MCTS searches TODO #na=model.action_dim
+        rtpt.step(subtitle=f"remaining episodes={n_ep - ep}")
         for t in range(max_ep_len):
             # MCTS step
             mcts.search(n_mcts=n_mcts, c=c, env=env, mcts_env=mctsEnv, skip_frame=skip_frame)  # perform a forward search
@@ -479,7 +491,6 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
             D.store((state, pi, V))
             # Make the true step
             a = np.random.choice(len(pi), p=pi)
-            print(convAction(a))
             a_store.append(convAction(a))
             #                 s1, r, terminal, _ = env.step(a+1)
             if(render_true == 1):
@@ -521,6 +532,7 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
 
         # Train
         D.reshuffle()
+        print('training started for episode {}'.format(t))
         for epoch in range(1):
             for sb, pib, V in D:
                 model.train(sb, pib, V)
@@ -547,8 +559,8 @@ if __name__ == '__main__':
     parser.add_argument('--n_hidden_layers', type=int, default=2, help='Number of hidden layers in NN')
     parser.add_argument('--n_hidden_units', type=int, default=128, help='Number of units per hidden layers in NN')
     parser.add_argument('--skip_frame', type=int, default=4, help='Number of frames skipped between two agent observations') 
-    parser.add_argument('--feature', dest='render_true', action='store_true')
-    parser.add_argument('--no-feature', dest='render_true', action='store_false')
+    parser.add_argument('--render', dest='render_true', action='store_true')
+    parser.add_argument('--no-render', dest='render_true', action='store_false')
     parser.set_defaults(render_true=True)
 
     args = parser.parse_args()
