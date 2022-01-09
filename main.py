@@ -326,13 +326,13 @@ class MCTS():
     def return_results(self, temp):
         ''' Process the output at the root node '''
         counts = np.array([child_action.n for child_action in self.root.child_actions])
-        print(self.root)
-        print("counts: {}".format(counts))
+        #print(self.root)
+        #print("counts: {}".format(counts))
         Q = np.array([child_action.Q for child_action in self.root.child_actions])
-        print(f"Q: {Q}")
+        #print(f"Q: {Q}")
         pi_target = stable_normalizer(counts, temp)
         V_target = np.sum((counts / np.sum(counts)) * Q)
-        print("pi_target: {}\n, V_target: {}".format(pi_target, V_target))
+        #print("pi_target: {}\n, V_target: {}".format(pi_target, V_target))
         return self.root.index, pi_target, V_target
 
 
@@ -503,8 +503,8 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
                 s1 = np.array(s1) / 255
                 #                    if (r > 0):
                 #                        input("waiting")
-                if(r!= 0):
-                    print(f"scored{r}")
+                #if(r!= 0):
+                #    print(f"scored{r}")
                 R += r
                 if terminal:
                     break
@@ -532,7 +532,7 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
 
         # Train
         D.reshuffle()
-        print('training started for episode {}'.format(t))
+        #print('training started for episode {}'.format(t))
         for epoch in range(1):
             for sb, pib, V in D:
                 model.train(sb, pib, V)
