@@ -19,6 +19,8 @@ from rtpt import RTPT
 from PIL import Image
 from math import log, sqrt
 
+import logging
+
 
 
 
@@ -524,8 +526,10 @@ def MCTSAgent(game,n_ep,n_mcts,max_ep_len,lr,c,gamma,data_size,batch_size,temp,n
             seed_best = seed
             R_best = R
             print('new best score with seed {} had the R {} and the moves were {}'.format(seed_best,R_best,a_best))
+            logging.info('new best score with seed {} had the R {} and the moves were {}'.format(seed_best,R_best,a_best))
         else:
             print('new worse score with seed {} had the R {} and the moves were {}'.format(seed,R,a_store))
+            logging.info('new worse score with seed {} had the R {} and the moves were {}'.format(seed,R,a_store))
         print('Finished episode {}, total return: {}, total time: {} sec'.format(ep, np.round(R, 2),
                                                                                  np.round((time.time() - start), 1)))
 
@@ -564,7 +568,7 @@ if __name__ == '__main__':
     parser.set_defaults(render_true=True)
 
     args = parser.parse_args()
-
+    logging.basicConfig(filename="log.txt", level=logging.INFO)
     print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
     episode_returns,timepoints,a_best,seed_best,R_best = MCTSAgent(game=args.game,n_ep=args.n_ep,n_mcts=args.n_mcts,
